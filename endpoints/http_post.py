@@ -6,7 +6,7 @@ import logging
 import asyncio
 from fastmcp import Client, FastMCP
 from fastmcp.client.transports import SSETransport
-import json
+from .config import configs
 
 from werkzeug import Request, Response
 from dify_plugin import Endpoint
@@ -18,10 +18,9 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logger.addHandler(plugin_logger_handler)
 
-with open("config.json", "r") as f:
-    config = json.load(f)
-
 class HTTPPostEndpoint(Endpoint):
+    cached_mcp_urls = []
+
     def _invoke(self, r: Request, values: Mapping, settings: Mapping) -> Response:
         """
         the simplest Streamable HTTP mcp protocol implementation.
@@ -48,28 +47,11 @@ class HTTPPostEndpoint(Endpoint):
         session_id = r.args.get("session_id")
         data_headers = dict(r.headers.to_wsgi_list())
         data = r.json
-        
-        # DIFY_HOOK_URL =f'{data_headers["X-Forwarded-Proto"]}://{data_headers["Host"]}:{data_headers["X-Forwarded-Port"]}/e/{data_headers["Dify-Hook-Id"]}/mcp'
-        # DIFY_APP_DESCRIPTION = tool['description']
-        # DIFY_MCP_PARENTS = tool['parents']
-        
-        # async def register_new_mcp():
-        #     client = Client(SSETransport(MCP_GATEWAY_URL))
-        #     async with client:
-        #         res = await client.call_tool(
-        #             "register_mcp",
-        #             {
-        #                 "name": "bioflexwf-mcp-server",
-        #                 "description": DIFY_APP_DESCRIPTION,
-        #                 "address": DIFY_HOOK_URL
-        #             }
-        #         )
 
-        # asyncio.run(register_new_mcp())
+        DIFY_HOOK_URL =f'{data_headers["X-Forwarded-Proto"]}://{data_headers["Host"]}:{data_headers["X-Forwarded-Port"]}/e/{data_headers["Dify-Hook-Id"]}/mcp'
 
-        if not config["ALREADY_REGISTERED"]:
-            MCP_GATEWAY_URL = f"{config['MCP_GATEWAY_PROTOCOL']}://{config['MCP_GATEWAY_HOST']}:{config['MCP_GATEWAY_PORT']}/{config['MCP_GATEWAY_PATH']}"
-            DIFY_HOOK_URL =f'{data_headers["X-Forwarded-Proto"]}://{data_headers["Host"]}:{data_headers["X-Forwarded-Port"]}/e/{data_headers["Dify-Hook-Id"]}/mcp'
+        if DIFY_HOOK_URL not in self.cached_mcp_urls:
+            MCP_GATEWAY_URL = f"{configs['MCP_GATEWAY_PROTOCOL']}://{configs['MCP_GATEWAY_HOST']}:{configs['MCP_GATEWAY_PORT']}/{configs['MCP_GATEWAY_PATH']}"
             DIFY_APP_DESCRIPTION = tool['description']
             
             async def register_new_mcp():
@@ -85,7 +67,10 @@ class HTTPPostEndpoint(Endpoint):
                     )
 
             asyncio.run(register_new_mcp())
-            config["ALREADY_REGISTERED"] = True
+            self.cached_mcp_urls.append(DIFY_HOOK_URL)
+
+        if data.get("method") == "terminate":
+            return Response("Session terminated", status=200)
 
         if data.get("method") == "initialize":
             session_id = str(uuid.uuid4()).replace("-", "")
