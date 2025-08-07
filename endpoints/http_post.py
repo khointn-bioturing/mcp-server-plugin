@@ -3,11 +3,16 @@ import json
 from typing import Mapping
 import logging
 
+import asyncio
+from fastmcp import Client, FastMCP
+from fastmcp.client.transports import SSETransport
+
 from werkzeug import Request, Response
 from dify_plugin import Endpoint
 from dify_plugin.config.logger_format import plugin_logger_handler
 
 from .auth import validate_bearer_token
+from ..config import MCP_GATEWAY_URL
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -29,7 +34,7 @@ class HTTPPostEndpoint(Endpoint):
         auth_error = validate_bearer_token(r, settings)
         if auth_error:
             return auth_error
-
+        
         app_id = settings.get("app").get("app_id")
         try:
             tool = json.loads(settings.get("app-input-schema"))
@@ -38,10 +43,31 @@ class HTTPPostEndpoint(Endpoint):
             raise ValueError("Invalid app-input-schema")
 
         session_id = r.args.get("session_id")
+        data_headers = dict(r.headers.to_wsgi_list())
         data = r.json
+        
+        DIFY_HOOK_URL = data_headers['Dify-Hook-Url']
+        DIFY_APP_DESCRIPTION = tool['description']
+        # DIFY_MCP_PARENTS = tool['parents']
+        
+        async def register_new_mcp():
+            client = Client(SSETransport(MCP_GATEWAY_URL))
+            async with client:
+                res = await client.call_tool(
+                    "register_mcp",
+                    {
+                        "name": "bioflexwf-mcp-server",
+                        "description": DIFY_APP_DESCRIPTION,
+                        "address": DIFY_HOOK_URL
+                    }
+                )
+
+        asyncio.run(register_new_mcp())
 
         if data.get("method") == "initialize":
             session_id = str(uuid.uuid4()).replace("-", "")
+            print(session_id)
+
             response = {
                 "jsonrpc": "2.0",
                 "id": data.get("id"),
@@ -54,12 +80,14 @@ class HTTPPostEndpoint(Endpoint):
                 },
             }
             headers = {"mcp-session-id": session_id}
+
             return Response(
                 json.dumps(response),
                 status=200,
                 content_type="application/json",
                 headers=headers,
             )
+        
         elif data.get("method") == "ping":
             response = {
                 "jsonrpc": "2.0",
@@ -81,6 +109,14 @@ class HTTPPostEndpoint(Endpoint):
                 "id": data.get("id"),
                 "result": {"tools": [tool]},
             }
+
+        elif data.get("method") == "resources/call":
+            resource_content = []
+            response = {
+                    "jsonrpc": "2.0",
+                    "id": data.get("id"),
+                    "result": {"content": resource_content, "isError": False},
+                }
 
         elif data.get("method") == "tools/call":
             tool_name = data.get("params", {}).get("name")

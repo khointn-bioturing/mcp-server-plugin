@@ -1,6 +1,6 @@
 version: 0.0.4
 type: plugin
-author: hjlarry
+author: khointn-bioturing
 name: mcp-server
 label:
   en_US: MCP server
