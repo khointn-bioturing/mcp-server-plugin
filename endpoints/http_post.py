@@ -6,17 +6,20 @@ import logging
 import asyncio
 from fastmcp import Client, FastMCP
 from fastmcp.client.transports import SSETransport
+import json
 
 from werkzeug import Request, Response
 from dify_plugin import Endpoint
 from dify_plugin.config.logger_format import plugin_logger_handler
 
 from .auth import validate_bearer_token
-from ..config import MCP_GATEWAY_URL
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logger.addHandler(plugin_logger_handler)
+
+with open("config.json", "r") as f:
+    config = json.load(f)
 
 class HTTPPostEndpoint(Endpoint):
     def _invoke(self, r: Request, values: Mapping, settings: Mapping) -> Response:
@@ -46,23 +49,43 @@ class HTTPPostEndpoint(Endpoint):
         data_headers = dict(r.headers.to_wsgi_list())
         data = r.json
         
-        DIFY_HOOK_URL = data_headers['Dify-Hook-Url']
-        DIFY_APP_DESCRIPTION = tool['description']
+        # DIFY_HOOK_URL =f'{data_headers["X-Forwarded-Proto"]}://{data_headers["Host"]}:{data_headers["X-Forwarded-Port"]}/e/{data_headers["Dify-Hook-Id"]}/mcp'
+        # DIFY_APP_DESCRIPTION = tool['description']
         # DIFY_MCP_PARENTS = tool['parents']
         
-        async def register_new_mcp():
-            client = Client(SSETransport(MCP_GATEWAY_URL))
-            async with client:
-                res = await client.call_tool(
-                    "register_mcp",
-                    {
-                        "name": "bioflexwf-mcp-server",
-                        "description": DIFY_APP_DESCRIPTION,
-                        "address": DIFY_HOOK_URL
-                    }
-                )
+        # async def register_new_mcp():
+        #     client = Client(SSETransport(MCP_GATEWAY_URL))
+        #     async with client:
+        #         res = await client.call_tool(
+        #             "register_mcp",
+        #             {
+        #                 "name": "bioflexwf-mcp-server",
+        #                 "description": DIFY_APP_DESCRIPTION,
+        #                 "address": DIFY_HOOK_URL
+        #             }
+        #         )
 
-        asyncio.run(register_new_mcp())
+        # asyncio.run(register_new_mcp())
+
+        if not config["ALREADY_REGISTERED"]:
+            MCP_GATEWAY_URL = f"{config['MCP_GATEWAY_PROTOCOL']}://{config['MCP_GATEWAY_HOST']}:{config['MCP_GATEWAY_PORT']}/{config['MCP_GATEWAY_PATH']}"
+            DIFY_HOOK_URL =f'{data_headers["X-Forwarded-Proto"]}://{data_headers["Host"]}:{data_headers["X-Forwarded-Port"]}/e/{data_headers["Dify-Hook-Id"]}/mcp'
+            DIFY_APP_DESCRIPTION = tool['description']
+            
+            async def register_new_mcp():
+                client = Client(SSETransport(MCP_GATEWAY_URL))
+                async with client:
+                    res = await client.call_tool(
+                        "register_mcp",
+                        {
+                            "name": "bioflexwf-mcp-server",
+                            "description": DIFY_APP_DESCRIPTION,
+                            "address": DIFY_HOOK_URL
+                        }
+                    )
+
+            asyncio.run(register_new_mcp())
+            config["ALREADY_REGISTERED"] = True
 
         if data.get("method") == "initialize":
             session_id = str(uuid.uuid4()).replace("-", "")
@@ -109,14 +132,18 @@ class HTTPPostEndpoint(Endpoint):
                 "id": data.get("id"),
                 "result": {"tools": [tool]},
             }
+            return Response(
+            json.dumps(response), 
+            status=200, 
+            content_type="application/json",)
 
-        elif data.get("method") == "resources/call":
-            resource_content = []
-            response = {
-                    "jsonrpc": "2.0",
-                    "id": data.get("id"),
-                    "result": {"content": resource_content, "isError": False},
-                }
+        # elif data.get("method") == "resources/call":
+        #     resource_content = []
+        #     response = {
+        #             "jsonrpc": "2.0",
+        #             "id": data.get("id"),
+        #             "result": {"content": resource_content, "isError": False},
+        #         }
 
         elif data.get("method") == "tools/call":
             tool_name = data.get("params", {}).get("name")

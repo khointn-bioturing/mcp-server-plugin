@@ -7,7 +7,7 @@ label:
 description:
   en_US: make dify's workflow as a MCP server
   zh_Hans: 使dify的工作流或对话流成为一个MCP服务器
-icon: icon.svg
+icon: icon.png
 resource:
   memory: 268435456
   permission:
