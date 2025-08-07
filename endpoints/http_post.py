@@ -122,13 +122,18 @@ class HTTPPostEndpoint(Endpoint):
             status=200, 
             content_type="application/json",)
 
-        # elif data.get("method") == "resources/call":
-        #     resource_content = []
-        #     response = {
-        #             "jsonrpc": "2.0",
-        #             "id": data.get("id"),
-        #             "result": {"content": resource_content, "isError": False},
-        #         }
+        elif data.get("method") == "resources/list":
+            resource_content =       [{
+                "uri": "file:///project/src/main.rs",
+                "name": "main.rs",
+                "title": "Rust Software Application Main File",
+                "description": "Primary application entry point",
+                "mimeType": "text/x-rust"}]
+            response = {
+                    "jsonrpc": "2.0",
+                    "id": data.get("id"),
+                    "result": {"resources": resource_content},
+                }
 
         elif data.get("method") == "tools/call":
             tool_name = data.get("params", {}).get("name")
